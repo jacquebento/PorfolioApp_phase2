@@ -4,9 +4,9 @@ This is a simple portfolio application for users to showcase their work, network
 Setup instructions:
 1. Clone the repository: (https://github.com/jacquebento/PorfolioApp_phase2.git)
 2. Install dependencies: npm install
-3. Open a second terminal, in the project directory run: node server.js
+3. In the project directory run: cd backend node server.js
 4. Open (https://localhost:3001) to accept the cert
-5. In the project directory run: npm start
+5. On a second terminal in the project directory run: cd frontend npm start
 6. Open (http://localhost:3000) to view it in your browser
 
 SSL configuration:

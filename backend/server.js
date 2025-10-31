@@ -21,7 +21,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
 }));
 
-// ----- Cookies & Session (before passport) -----
+// ----- Cookies & Session  -----
 app.use(cookieParser());
 
 app.use(session({
@@ -33,7 +33,7 @@ app.use(session({
     httpOnly: true,
     secure: true,                // HTTPS only
     sameSite: 'none',            // cross-site (3000 -> 3001)
-    maxAge: 15 * 60 * 1000       // 15 minutes idle timeout
+    maxAge: 15 * 1000       // 15 minutes idle timeout
   },
   rolling: true                  // sliding expiration
 }));
@@ -63,7 +63,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"], // sufficient for backend-served pages; CRA page has its own CSP
+      connectSrc: ["'self'"], 
     },
   },
   frameguard: { action: "deny" },
@@ -72,7 +72,7 @@ app.use(helmet({
   hsts: { maxAge: 31536000 },
 }));
 
-// ----- In-memory users (demo) - define BEFORE passport strategy -----
+// ----- In-memory users (demo) -----
 const users = new Map();
 
 // ----- Passport (after session) -----
@@ -100,7 +100,7 @@ passport.use(new GoogleStrategy(
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser((id, done) => done(null, users.get(id) || null));
 
-// ----- CSRF (after session & helmet) -----
+// ----- CSRF  -----
 const csrfProtection = csrf({
   cookie: {
     httpOnly: true,
