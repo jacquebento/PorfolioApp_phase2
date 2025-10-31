@@ -2,13 +2,12 @@
 This is a simple portfolio application for users to showcase their work, network and blog.
 
 Setup instructions:
-1. Clone the repository: <https://github.com/jacquebento/portfolioApp-phase1.git>
+1. Clone the repository: (https://github.com/jacquebento/PorfolioApp_phase2.git)
 2. Install dependencies: npm install
-3. In the project directory run: npm start
-4. Open (http://localhost:3000) to view it in your browser
-5. Open a second terminal, in the project directory run: node server.js
-6. Open (https://localhost:3001) to accept the cert
-
+3. Open a second terminal, in the project directory run: node server.js
+4. Open (https://localhost:3001) to accept the cert
+5. In the project directory run: npm start
+6. Open (http://localhost:3000) to view it in your browser
 
 SSL configuration:
 1. Generate private key: openssl genrsa -out key.pem 2048
@@ -51,6 +50,16 @@ Choosing which headers to use was challenging because it required some research.
 
 I configured the GET/posts route cache strategy so that only non-sensitive data should be cached, the GET /posts/:id to apply role-based access if post is sensitive, the POST /posts to require authentication and sanitize input, the GET /profile/:username to only public info cached; private info not cached and the POST /contact to validate input, preventing spam.
 
+Authentication and Session Management
+The application uses Google OAuth 2.0 for authentication, allowing users to securely log in with their Google accounts. After successful login, an Express session is created and stored in a Secure, HttpOnly cookie to prevent client-side access. Sessions include both idle and absolute expiration, ensuring they automatically expire after inactivity or a fixed lifetime. Additionally, CSRF protection is implemented to safeguard all state-changing requests, providing a secure and reliable session management system.
 
+Role-Based Access Control (RBAC)
+Roles
+Guest: Not authenticated.
+User (default after login): Authenticated end-user who owns a profile and content.
+Admin: Elevated privileges for moderation and system management.
+How it’s enforced:
+Role stored in session after Google OAuth (e.g., req.user.role = 'User' | 'Admin').
 
-
+Lessons Learned:
+I had a lot of difficulties trying to implement JWT to this project that I couldn't solve for this phase but hopefully will be fully addressed on phase 3.
