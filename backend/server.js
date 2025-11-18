@@ -10,6 +10,10 @@ const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const csrf = require('csurf');
 
+const crypto = require("crypto");
+const { body, validationResult } = require("express-validator");
+const escapeHtml = require("escape-html");
+
 const app = express();
 app.use(express.json());
 
@@ -33,7 +37,7 @@ app.use(session({
     httpOnly: true,
     secure: true,                // HTTPS only
     sameSite: 'none',            // cross-site (3000 -> 3001)
-    maxAge: 15 * 1000       // 15 minutes idle timeout
+    maxAge: 15 * 60 * 1000       // 15 minutes idle timeout
   },
   rolling: true                  // sliding expiration
 }));
@@ -75,6 +79,48 @@ app.use(helmet({
 // ----- In-memory users (demo) -----
 const users = new Map();
 
+function requireAuth(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  next();
+}
+
+// ----- Simple encryption helpers for sensitive fields -----
+const ENC_ALGO = "aes-256-gcm";
+// 32-byte key derived from secret in .env
+const ENC_KEY = crypto
+  .createHash("sha256")
+  .update(String(process.env.ENCRYPTION_SECRET || "fallback-secret"))
+  .digest();
+
+function encrypt(text) {
+  if (!text) return "";
+  const iv = crypto.randomBytes(12); // GCM recommended IV length
+  const cipher = crypto.createCipheriv(ENC_ALGO, ENC_KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  // store iv + tag + encrypted in base64
+  return Buffer.concat([iv, tag, encrypted]).toString("base64");
+}
+
+function decrypt(payload) {
+  if (!payload) return "";
+  try {
+    const buf = Buffer.from(payload, "base64");
+    const iv = buf.subarray(0, 12);
+    const tag = buf.subarray(12, 28);
+    const data = buf.subarray(28);
+    const decipher = crypto.createDecipheriv(ENC_ALGO, ENC_KEY, iv);
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+    return decrypted.toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+
 // ----- Passport (after session) -----
 app.use(passport.initialize());
 app.use(passport.session());
@@ -86,16 +132,23 @@ passport.use(new GoogleStrategy(
     callbackURL: "https://localhost:3001/auth/google/callback"
   },
   (accessToken, refreshToken, profile, done) => {
-    const user = {
+    const existing = users.get(profile.id);
+    const emailPlain = profile.emails?.[0]?.value || "";
+
+    const user = existing || {
       id: profile.id,
       displayName: profile.displayName,
-      email: profile.emails?.[0]?.value,
-      photo: profile.photos?.[0]?.value
+      encryptedBio: encrypt(""), // default empty bio
     };
+
+    // Always (re)store encrypted email
+    user.encryptedEmail = emailPlain ? encrypt(emailPlain) : user.encryptedEmail;
+
     users.set(profile.id, user);
     return done(null, user);
   }
 ));
+
 
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser((id, done) => done(null, users.get(id) || null));
@@ -147,8 +200,103 @@ app.get("/auth/failure", (req, res) => {
 // Session check
 app.get("/auth/me", (req, res) => {
   if (!req.user) return res.status(401).json({ user: null });
-  res.json({ user: req.user });
+
+  const dbUser = users.get(req.user.id);
+  if (!dbUser) return res.status(401).json({ user: null });
+
+  const email = decrypt(dbUser.encryptedEmail);
+  const bio = decrypt(dbUser.encryptedBio);
+
+  res.json({
+    user: {
+      id: dbUser.id,
+      displayName: dbUser.displayName,
+      email,
+      bio,
+    },
+  });
 });
+
+// Get current user's profile (decrypted)
+app.get("/profile/me", requireAuth, (req, res) => {
+  const dbUser = users.get(req.user.id);
+  if (!dbUser) return res.status(404).json({ error: "User not found" });
+
+  const email = decrypt(dbUser.encryptedEmail);
+  const bio = decrypt(dbUser.encryptedBio);
+
+  res.json({
+    profile: {
+      name: dbUser.displayName || "",
+      email,
+      bio,
+    },
+  });
+});
+
+// Update profile with validation + sanitization + encryption
+app.post(
+  "/profile",
+  requireAuth,
+  [
+    body("name")
+      .trim()
+      .isLength({ min: 3, max: 50 })
+      .matches(/^[A-Za-z\s]+$/) // alphabetic + spaces
+      .withMessage("Name must be 3–50 letters only.")
+      .escape(), // sanitize
+
+    body("email")
+      .trim()
+      .isEmail()
+      .withMessage("Must be a valid email address.")
+      .normalizeEmail(),
+
+    body("bio")
+      .trim()
+      .isLength({ max: 500 })
+      // allow letters, numbers, spaces and basic punctuation; no < > etc.
+      .matches(/^[A-Za-z0-9\s.,!?'"-]*$/)
+      .withMessage(
+        "Bio can have up to 500 characters, no HTML tags or special characters."
+      ),
+  ],
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const dbUser = users.get(req.user.id);
+    if (!dbUser) return res.status(404).json({ error: "User not found" });
+
+    // Extract sanitized values
+    const { name, email, bio } = req.body;
+
+    // Escape again before storage to be extra safe (defense-in-depth)
+    const safeName = escapeHtml(name);
+    const safeEmail = escapeHtml(email);
+    const safeBio = escapeHtml(bio);
+
+    // Encrypt sensitive fields before storing
+    dbUser.displayName = safeName;
+    dbUser.encryptedEmail = encrypt(safeEmail);
+    dbUser.encryptedBio = encrypt(safeBio);
+
+    users.set(dbUser.id, dbUser);
+
+    res.json({
+      message: "Profile updated",
+      profile: {
+        name: safeName,
+        email: safeEmail,
+        bio: safeBio,
+      },
+    });
+  }
+);
+
+
 
 // Logout
 app.post("/auth/logout", (req, res) => {

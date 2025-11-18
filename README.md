@@ -61,5 +61,52 @@ Admin: Elevated privileges for moderation and system management.
 How it’s enforced:
 Role stored in session after Google OAuth (e.g., req.user.role = 'User' | 'Admin').
 
-Lessons Learned:
-I had a lot of difficulties trying to implement JWT to this project that I couldn't solve for this phase but hopefully will be fully addressed on phase 3.
+
+Security Implementation Overview
+
+Input Validation Techniques
+- All profile update fields (`name`, `email`, `bio`) are validated on the server using express-validator.
+- Name:
+  - Must be between 3 and 50 characters.
+  - Must match the regex `^[A-Za-z\s]+$` (letters and spaces only).
+- Email:
+  - Validated with `.isEmail()` to enforce standard email format.
+  - Normalized using `.normalizeEmail()` before processing.
+- Bio:
+  - Limited to a maximum of 500 characters**.
+  - Validated with a strict regex to allow only letters, numbers, spaces, and basic punctuation (no HTML tags or special characters).
+- Invalid input returns a `400 Bad Request` with a descriptive error message and is never stored.
+
+Output Encoding Methods
+- Before storing, user-provided fields (`name`, `email`, `bio`) are sanitized using:
+  - `express-validator` methods such as `.trim()` and `.escape()`.
+  - The escape-html library for extra defense-in-depth.
+- When sending data back to the client, all values are returned as plain text.
+- On the frontend, React renders values inside JSX (e.g., `{user.displayName}`, `{user.bio}`), which are automatically escaped by React’s rendering engine.
+- No `dangerouslySetInnerHTML` is used, preventing user input from being interpreted as HTML or JavaScript.
+
+Encryption Techniques Used
+- Sensitive profile fields are encrypted at rest using Node’s built-in crypto module:
+  - Algorithm: AES-256-GCM (`aes-256-gcm`).
+  - A 256-bit key is derived from an environment variable (`ENCRYPTION_SECRET`) using SHA-256.
+  - Encrypted payloads include IV + auth tag + ciphertext, encoded as Base64 for storage.
+- The following fields are encrypted before being stored in the in-memory user store:
+  - `email`
+  - `bio`
+- Decryption occurs only when the authenticated user requests their profile (`/auth/me`, `/profile/me`).
+- All communication between client and server is protected by **HTTPS**:
+  - The backend runs on `https://localhost:3001` with a TLS certificate.
+  - Session cookies are configured with `secure: true`, `httpOnly: true`, and `sameSite: 'none'` to protect them from network eavesdropping and client-side access.
+
+Third-Party Libraries & Dependency Management
+- Dependencies are managed via npm with `package.json` / `package-lock.json` for both frontend and backend.
+- Key security-related libraries:
+  - helmet – sets security-related HTTP headers (CSP, HSTS, X-Frame-Options, etc.).
+  - express-session – secure session management with HTTP-only, secure cookies.
+  - csurf – CSRF protection for state-changing requests.
+  - passport & passport-google-oauth20 – secure authentication with Google OAuth 2.0.
+  - express-validator – input validation and basic sanitization.
+  - escape-html – escaping user input before storage/output.
+- Dependencies are periodically reviewed and updated using:
+  - `npm audit` to detect known vulnerabilities.
+  - Manual updates of npm packages when security advisories or important releases are announced.
