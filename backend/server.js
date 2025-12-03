@@ -52,7 +52,7 @@ app.use((req, res, next) => {
     next();
   }
 });
-
+  
 // ----- Request logger -----
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
@@ -60,21 +60,34 @@ app.use((req, res, next) => {
 });
 
 // ----- Helmet -----
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"], 
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        // Default rule
+        defaultSrc: ["'self'"],
+
+        // Resources
+        scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+        styleSrc: ["'self'"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'"],
+
+        // ✅ REQUIRED: These directives have NO fallback
+        frameAncestors: ["'none'"],  // prevents clickjacking / iframe embedding
+        formAction: ["'self'"],      // only allow form submissions to your own domain
+        objectSrc: ["'none'"],       // block <object>, <embed>, <applet>
+        baseUri: ["'self'"],         // restricts <base> tag manipulation
+      },
     },
-  },
-  frameguard: { action: "deny" },
-  hidePoweredBy: true,
-  noSniff: true,
-  hsts: { maxAge: 31536000 },
-}));
+
+    frameguard: { action: "deny" }, // still okay, works with frameAncestors
+    hidePoweredBy: true,
+    noSniff: true,
+    hsts: { maxAge: 31536000 },
+  })
+);
+
 
 // ----- In-memory users (demo) -----
 const users = new Map();

@@ -110,3 +110,35 @@ Third-Party Libraries & Dependency Management
 - Dependencies are periodically reviewed and updated using:
   - `npm audit` to detect known vulnerabilities.
   - Manual updates of npm packages when security advisories or important releases are announced.
+
+Phase 4
+
+Testing Tool: Owasp ZAP (localhost:3000 – frontend)
+
+Fixing:
+
+Alert 1: CSP Failure with no Fallback
+Fix: I added these directives on my Helmet block: 
+frameAncestors: ["'none'"],  // prevents clickjacking / iframe embedding
+        formAction: ["'self'"],      // only allow form submissions to your own domain
+        objectSrc: ["'none'"],       // block <object>, <embed>, <applet>
+        baseUri: ["'self'"],         // restricts <base> tag manipulation
+        
+Alert 2: CSP Header not set
+Fix: It is on localhost:3001
+
+Alert 3: Cross-Domain Misconfiguration
+Fix: Update CORS to use a strict allow list
+
+Alert 4: Missing anti-clickjacking header
+Fix: It is on localhost:3001
+
+Alert 5: CSP Wildcard directive
+Fix: Changed the imgSrc setting on Helmet
+
+Alert 6: CSP: style-src unsafe inline
+Fix: Removed unsafe-inline setting on styleSrc
+
+Lessons Learned: 
+
+I learned that It’s important to scan both ports (3000 and 3001) to make sure to assess the necessary alerts. To fix the CSP alerts I had to learn about directives, fallbacks and wildcards function to strict the app and make more secure.
